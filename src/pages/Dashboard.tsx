@@ -1,0 +1,163 @@
+import { useState } from 'react';
+import { useAppointments, Appointment } from '../hooks/useAppointments';
+import { AppointmentTable } from '../components/Dashboard/AppointmentTable';
+import { ViewAppointmentModal, EditAppointmentModal, DeleteConfirmationModal, RescheduleModal, CancelConfirmationModal } from '../components/Dashboard/AppointmentModals';
+import { Users, CalendarCheck, CalendarX, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+
+export function Dashboard() {
+    const { appointments, updateAppointment, deleteAppointment } = useAppointments();
+    const { role } = useAuth();
+
+    // Modal States
+    const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+    const [modalType, setModalType] = useState<'view' | 'edit' | 'delete' | 'cancel' | 'reschedule' | null>(null);
+
+    const stats = {
+        total: appointments.length,
+        booked: appointments.filter(a => a.status === 'booked').length,
+        cancelled: appointments.filter(a => a.status === 'cancelled').length,
+        completed: appointments.filter(a => a.status === 'completed').length,
+    };
+
+    const closeModal = () => {
+        setModalType(null);
+        setSelectedAppointment(null);
+    };
+
+    return (
+        <div className="animate-up">
+            <header className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+                <div>
+                    <h1 className="page-title">Harmony Wellness London</h1>
+                    <p className="page-subtitle">Real-time monitoring and management of Wellness Receptionist sessions.</p>
+                </div>
+            </header>
+
+            <div className="stat-grid">
+                <StatCard
+                    label="Total Sessions"
+                    value={stats.total}
+                    icon={<Users size={20} />}
+                    type="total"
+                />
+                <StatCard
+                    label="Booked"
+                    value={stats.booked}
+                    icon={<CalendarCheck size={20} />}
+                    type="booked"
+                    total={stats.total}
+                />
+                <StatCard
+                    label="Cancelled"
+                    value={stats.cancelled}
+                    icon={<CalendarX size={20} />}
+                    type="cancelled"
+                    total={stats.total}
+                />
+            </div>
+
+            <div style={{ marginTop: '32px' }}>
+                <AppointmentTable
+                    onView={(apt) => { setSelectedAppointment(apt); setModalType('view'); }}
+                    onEdit={(apt) => { setSelectedAppointment(apt); setModalType('edit'); }}
+                    onReschedule={(apt) => { setSelectedAppointment(apt); setModalType('reschedule'); }}
+                    onCancel={(apt) => {
+                        setSelectedAppointment(apt);
+                        setModalType('cancel');
+                    }}
+                    onDelete={(apt) => { setSelectedAppointment(apt); setModalType('delete'); }}
+                />
+            </div>
+
+            <ViewAppointmentModal
+                isOpen={modalType === 'view'}
+                onClose={closeModal}
+                appointment={selectedAppointment}
+            />
+
+
+            <EditAppointmentModal
+                isOpen={modalType === 'edit'}
+                onClose={closeModal}
+                appointment={selectedAppointment}
+                onSave={async (updates) => {
+                    if (selectedAppointment) await updateAppointment(selectedAppointment.id, updates);
+                }}
+            />
+
+            <RescheduleModal
+                isOpen={modalType === 'reschedule'}
+                onClose={closeModal}
+                appointment={selectedAppointment}
+                onSave={async (newTime) => {
+                    if (selectedAppointment) await updateAppointment(selectedAppointment.id, { appointment_time: newTime, status: 'rescheduled' });
+                }}
+            />
+
+            <DeleteConfirmationModal
+                isOpen={modalType === 'delete'}
+                onClose={closeModal}
+                patientName={selectedAppointment?.patient_name || ''}
+                onConfirm={async () => {
+                    if (selectedAppointment) await deleteAppointment(selectedAppointment.id);
+                }}
+            />
+            <CancelConfirmationModal
+                isOpen={modalType === 'cancel'}
+                onClose={closeModal}
+                patientName={selectedAppointment?.patient_name || ''}
+                onConfirm={async () => {
+                    if (selectedAppointment) await updateAppointment(selectedAppointment.id, { status: 'cancelled' });
+                }}
+            />
+        </div>
+    );
+}
+
+function StatCard({ label, value, icon, type, total }: {
+    label: string,
+    value: number,
+    icon: React.ReactNode,
+    type: 'total' | 'booked' | 'cancelled' | 'completed',
+    total?: number
+}) {
+    const config = {
+        total: { color: 'var(--primary)', bg: 'var(--primary-light)' },
+        booked: { color: 'var(--status-booked)', bg: 'var(--status-booked-bg)' },
+        cancelled: { color: 'var(--status-cancelled)', bg: 'var(--status-cancelled-bg)' },
+        completed: { color: 'var(--status-completed)', bg: 'var(--status-completed-bg)' }
+    };
+
+    const { color, bg } = config[type];
+
+    // Calculate real percentage of total, only when meaningful
+    const pct = (total && total > 0) ? Math.round((value / total) * 100) : null;
+
+    return (
+        <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{
+                    width: '40px', height: '40px', borderRadius: '8px',
+                    backgroundColor: bg, color: color,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    {icon}
+                </div>
+                {pct !== null && (
+                    <div style={{
+                        padding: '4px 8px', borderRadius: '16px', fontSize: '11px', fontWeight: '700',
+                        backgroundColor: type === 'cancelled' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                        color: type === 'cancelled' ? '#ef4444' : '#10b981'
+                    }}>
+                        {pct}% of total
+                    </div>
+                )}
+            </div>
+            <div>
+                <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--foreground)', lineHeight: '1.2' }}>{value}</div>
+                <div style={{ fontSize: '13px', color: 'var(--muted)', fontWeight: '500', marginTop: '4px' }}>{label}</div>
+            </div>
+        </div>
+    );
+}
